@@ -46,7 +46,7 @@ def main():
 
 #FILE DOWNLOAD
 
-"""     file_id = '11Q2I4H9kUD43KV8C26I-T_GOMXJubOlq'
+    file_id = '11Q2I4H9kUD43KV8C26I-T_GOMXJubOlq'
     request = service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
@@ -59,7 +59,7 @@ def main():
     #save to local drive
     with open(os.path.join('randall_.pdf'), 'wb') as f:
         f.write(fh.read())
-        f.close() """
+        f.close()
 
 if __name__ == '__main__':
     main()
