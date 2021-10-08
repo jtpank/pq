@@ -87,7 +87,7 @@ def pull_current_CSV_PQ(url):
 
     #DOWNLOAD CSV BEGIN
     driver.command_executor._commands["send_command"] = ("POST", '/session/$sessionId/chromium/send_command')
-    params = {'cmd': 'Page.setDownloadBehavior', 'params': {'behavior': 'allow', 'downloadPath': "/root/pythonProject/downloads"}}
+    params = {'cmd': 'Page.setDownloadBehavior', 'params': {'behavior': 'allow', 'downloadPath': "C:\\Users\\jtpan\\OneDrive\\Desktop\\bickmanDisneyCovid\\downloads"}}
     command_result = driver.execute("send_command", params)
     print("response from browser:")
     for key in command_result:
@@ -160,6 +160,122 @@ def pullFullNamesCompleteTests():
             f.write(name + '\t\t' + NameDateDict_withFullNameTuple[name][0] + '\t\t' + NameDateDict_withFullNameTuple[name][1] + '\n')
         f.close()
 
+
+#5a.
+def verifyNegativeTests(dictIn):
+    
+    #SETUP for API calls
+    creds = None
+    if os.path.exists('./googleAPI/token.json'):
+        creds = Credentials.from_authorized_user_file('./googleAPI/token.json', SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                './googleAPI/credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('./googleAPI/token.json', 'w') as token:
+            token.write(creds.to_json())
+    service = build(API_NAME, API_VERSION, credentials=creds)
+    #FINISH SETUP for API calls
+
+    #QUERY AND DOWNLOAD PDFS
+    page_token = None
+    fileIDdict = {}
+    for person in dictIn:
+        fullname = dictIn[person][0]
+        dateUnmod = dictIn[person][1]
+        # restructure date to be yyyy-mm-dd FROM mm-dd-yyyy
+        date = dateUnmod[6:]+ '-' + dateUnmod[:5]
+        while True:
+            query = "name contains '{0}' and createdTime >= '{1}T00:00:00'".format(fullname, date)
+            response = service.files().list(
+                #q="name contains 'josh randall'",
+                q=query,
+                fields='nextPageToken, files(id, name)',
+                pageToken=page_token
+            ).execute()
+            for file in response.get('files', []):
+                # Process change
+                fileIDdict[fullname] = file.get('id')
+                print('Found file and stored in dict: {0} {1}'.format(file.get('name'), file.get('id')))
+            page_token = response.get('nextPageToken', None)
+            if page_token is None:
+                break
+    #loop through fileIDdict and download pdfs into folder
+    for person in fileIDdict:
+        request = service.files().get_media(fileId=fileIDdict[person])
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+            print("Download {}.".format(int(status.progress() * 100)))
+        #file header
+        fh.seek(0)
+        #save to local drive
+        pathStr = "./pdfs/{0}.pdf".format(person)
+        with open(os.path.join(pathStr), 'wb') as f:
+            f.write(fh.read())
+            f.close()
+    #FINISH QUERY AND DOWNLOAD PDFS
+
+    #PARSE PDFS and confirm result, name, date, and show
+    for person in dictIn:
+        pathStr = "./pdfs/{0}.pdf".format(person)
+        pdf = PdfFileReader(pathStr)
+        pageObj = pdf.getPage(0)
+        txt = pageObj.extractText()
+        with open('output.txt', 'w') as f:
+            f.write(txt)
+            f.close()
+        lines = []
+        with open('output.txt') as f:
+            lines = [line.rstrip() for line in f]
+            f.close()
+        os.system("rm -rf output.txt")
+        # Ordering Physician: 
+        # Collection Date:
+        # Patient Name:
+        # Result
+        testObj = {'Name': '', 'CollectionDate': '', 'Show': '', 'Result': ''}
+        for i in range(0, len(lines)):
+            if lines[i] == 'Ordering Physician:':
+                strArr = lines[i+1].split('-')
+                testObj['Show'] = strArr[1]
+            elif lines[i] == 'Collection Date:':
+                #format date from m/d/yyyy to mm-dd-yyyy
+                strArr = lines[i+1].split('/')
+                if len(strArr[0]) == 1:
+                    d = '0' + strArr[0]
+                    strArr[0] = d
+                if len(strArr[1]) == 1:
+                    d = '0' + strArr[1]
+                    strArr[1] = d
+                dateStr = strArr[0] + '-' + strArr[1] + '-' + strArr[2]
+                testObj['CollectionDate'] = dateStr
+            elif lines[i] == 'Patient Name:':
+                strArr = lines[i+1].split(',')
+                testObj['Name'] = strArr[1] + ' ' + strArr[0]
+            elif lines[i] == 'Result':
+                testObj['Result'] = lines[i+1]
+            else:
+                i+=1
+        #Verify 
+        if not testObj['Name'] == dictIn[person][0].upper():
+            print("Names do not match")
+        elif not testObj['CollectionDate'] == dictIn[person][1]:
+            print(testObj['CollectionDate'] + '\t' + dictIn[person][1])
+            print("Dates do not match")
+        elif not testObj['Result'][:8] == 'Negative':
+            print("Result is NOT Negative")
+        strOut = "{0} tested on {1} for the show {2} and is NEGATIVE \n".format(dictIn[person][0], dictIn[person][1], testObj['Show'])
+        print(strOut)
+        
+        #End Verify
                 
 
 #5b. Loop through each pair in dict and assign result using selenium
@@ -232,7 +348,7 @@ def assignTestResults(dictIn):
 
         # for ICD select option IF EMPTY
         # /div[1]/waf-select-input/form-control-container/div/div/div/ng-select/div/div/div[2]"]
-        if not driver.find_elements_by_xpath("//body/app-root/div/div/div[@class='page-content-wrapper']/div/div/order-details/tcm-main-frame/div/div[2]/div/tcm-details-layout/div/div[2]/div/form/collapsible-panel[@name='orderTestDetails']/div/div[2]/div/div[1]/waf-select-input/form-control-container/div/div/div/ng-select/div/span[@title='Clear all']"):
+        if not driver.find_element_by_xpath("//body/app-root/div/div/div[@class='page-content-wrapper']/div/div/order-details/tcm-main-frame/div/div[2]/div/tcm-details-layout/div/div[2]/div/form/collapsible-panel[@name='orderTestDetails']/div/div[2]/div/div[1]/waf-select-input/form-control-container/div/div/div/ng-select/div/span[@title='Clear all']"):
             icdCodeEntry = driver.find_element_by_xpath("//body/app-root/div/div/div[@class='page-content-wrapper']/div/div/order-details/tcm-main-frame/div/div[2]/div/tcm-details-layout/div/div[2]/div/form/collapsible-panel[@name='orderTestDetails']/div/div[2]/div/div[1]/waf-select-input/form-control-container/div/div/div/ng-select/div/div/div[2]/input")
             icdCodeEntry.send_keys("U07.1 (COVID 19 [confirmed cases])")
             icdCodeEntry.send_keys(Keys.ENTER)
@@ -249,23 +365,20 @@ def assignTestResults(dictIn):
 
         selectSaveExit = driver.find_element_by_xpath("//body/app-root/div/div/div[@class='page-content-wrapper']/div/div/order-details/tcm-main-frame/div/div/div[2]/button[@templatetype='SaveExit']")
         print("Result assigned for: " + dictIn[searchName][0] + '\t' + dictIn[searchName][1])
-#       	input("Press enter to continue")
+        input("Press enter to continue")
         selectSaveExit.click()
-        time.sleep(1)
-	#RESULT ASSIGNEMENT END
+        #RESULT ASSIGNEMENT END
     driver.quit()
 
 
-
-def verifyTestResults(dictIn):
-    print("Finished Verifying results")
 
 def main():
     pull_current_CSV_PQ(URL)
     convertCSV_XLSX(_PATHCSV)
     pullFullNamesCompleteTests()
-    assignTestResults(NameDateDict_withFullNameTuple)
-#    verifyTestResults()
+    
+    #verifyNegativeTests(testDict)
+    #assignTestResults(NameDateDict_withFullNameTuple)
 
 if __name__ == "__main__":
     main()
