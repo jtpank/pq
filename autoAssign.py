@@ -49,9 +49,9 @@ _PATHCSV = "../downloads/exportRecent.csv"
 #Email: 
 #Project: PQ
 #Authentication password: 
-URL = "https://bickmanmd.preciseq.com/login"
-USERNAME = "jtpank34@gmail.com"
-PASSWORD = "Tom4568!"
+URL = ""
+USERNAME = ""
+PASSWORD = ""
 #search 2 days from today
 today = date.today().strftime('%m/%d/%y')
 yesterday = date.today() - timedelta(days=2)
